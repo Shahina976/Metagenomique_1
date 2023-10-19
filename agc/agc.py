@@ -26,12 +26,12 @@ from typing import Iterator, Dict, List
 # ftp://ftp.ncbi.nih.gov/blast/matrices/
 import nwalign3 as nw
 
-__author__ = "Your Name"
+__author__ = "Shahina MOHAMED"
 __copyright__ = "Universite Paris Diderot"
-__credits__ = ["Your Name"]
+__credits__ = ["Shahina"]
 __license__ = "GPL"
 __version__ = "1.0.0"
-__maintainer__ = "Your Name"
+__maintainer__ = "Shahina"
 __email__ = "your@email.fr"
 __status__ = "Developpement"
 
@@ -77,24 +77,40 @@ def get_arguments(): # pragma: no cover
 
 
 def read_fasta(amplicon_file: Path, minseqlen: int) -> Iterator[str]:
-    """Read a compressed fasta and extract all fasta sequences.
+    """Read a compressed fasta and extract sequences of length >= minseqlen.
 
     :param amplicon_file: (Path) Path to the amplicon file in FASTA.gz format.
-    :param minseqlen: (int) Minimum amplicon sequence length
+    :param minseqlen: (int) Minimum amplicon sequence length.
     :return: A generator object that provides the Fasta sequences (str).
     """
-    pass
+    with gzip.open(amplicon_file, 'rt') as file_gz:
+        sequence = ""
+        for line in file_gz:
+            line = line.strip()
+            if line.startswith(">"):
+                # si assez long on fait le yield
+                if len(sequence) >= minseqlen:
+                    yield sequence
+                sequence = ""
+            else:
+                # concatenation
+                sequence += line
+        # on regarde la dernière seq
+        if len(sequence) >= minseqlen:
+            yield sequence
 
 
 def dereplication_fulllength(amplicon_file: Path, minseqlen: int, mincount: int) -> Iterator[List]:
-    """Dereplicate the set of sequence
+    """Dereplicate the set of sequences based on length and count criteria.
 
     :param amplicon_file: (Path) Path to the amplicon file in FASTA.gz format.
-    :param minseqlen: (int) Minimum amplicon sequence length
-    :param mincount: (int) Minimum amplicon count
-    :return: A generator object that provides a (list)[sequences, count] of sequence with a count >= mincount and a length >= minseqlen.
+    :param minseqlen: (int) Minimum amplicon sequence length.
+    :param mincount: (int) Minimum amplicon count.
+    :return: A generator object that provides a list [sequences, count] of sequences
+             with a count >= mincount and a length >= minseqlen.
     """
-    pass
+    
+
 
 def get_identity(alignment_list: List[str]) -> float:
     """Compute the identity rate between two sequences
@@ -137,6 +153,14 @@ def main(): # pragma: no cover
     # Get arguments
     args = get_arguments()
     # Votre programme ici
+
+    
+    # 1) read fastq.gz
+    amplicon_file = Path(args.amplicon_file)
+    minseqlen = 400 
+    for sequence in read_fasta(amplicon_file, minseqlen):
+        print(sequence)
+
 
 
 
