@@ -15,16 +15,15 @@
 
 import argparse
 import sys
-import os
 import gzip
-import statistics
 import textwrap
 from pathlib import Path
-from collections import Counter
-from typing import Iterator, Dict, List
+from typing import Iterator, List
 # https://github.com/briney/nwalign3
 # ftp://ftp.ncbi.nih.gov/blast/matrices/
 import nwalign3 as nw
+import numpy as np
+np.int = int
 
 __author__ = "Shahina MOHAMED"
 __copyright__ = "Universite Paris Diderot"
@@ -62,10 +61,8 @@ def get_arguments(): # pragma: no cover
     :return: An object that contains the arguments
     """
     # Parsing arguments
-    parser = argparse.ArgumentParser(description=__doc__, usage=
-                                     "{0} -h"
-                                     .format(sys.argv[0]))
-    parser.add_argument('-i', '-amplicon_file', dest='amplicon_file', type=isfile, required=True, 
+    parser = argparse.ArgumentParser(description=__doc__, usage=f"{sys.argv[0]} -h")
+    parser.add_argument('-i', '-amplicon_file', dest='amplicon_file', type=isfile, required=True,
                         help="Amplicon is a compressed fasta file (.fasta.gz)")
     parser.add_argument('-s', '-minseqlen', dest='minseqlen', type=int, default = 400,
                         help="Minimum sequence length for dereplication (default 400)")
@@ -109,18 +106,49 @@ def dereplication_fulllength(amplicon_file: Path, minseqlen: int, mincount: int)
     :return: A generator object that provides a list [sequences, count] of sequences
              with a count >= mincount and a length >= minseqlen.
     """
-    
+
+    sequence_counts = {}
+    for sequence in read_fasta(amplicon_file, minseqlen):
+        if sequence in sequence_counts:
+            sequence_counts[sequence] += 1
+        else:
+            sequence_counts[sequence] = 1
+
+    # Filtrer sequences basée sur count et longueur
+    filtered_sequences = [(sequence, count) for sequence, count in sequence_counts.items()
+                          if count >= mincount]
+    # triez seq dans ordre decroissant
+    sorted_sequences = sorted(filtered_sequences, key=lambda x: x[1], reverse=True)
+    # Yield sequences et counts
+    for sequence, count in sorted_sequences:
+        yield [sequence, count]
 
 
 def get_identity(alignment_list: List[str]) -> float:
     """Compute the identity rate between two sequences
 
-    :param alignment_list:  (list) A list of aligned sequences in the format ["SE-QUENCE1", "SE-QUENCE2"]
+    :param alignment_list:  (list) A list of aligned sequences 
+        in the format ["SE-QUENCE1", "SE-QUENCE2"]
     :return: (float) The rate of identity between the two sequences.
     """
-    pass
+    if len(alignment_list) != 2:
+        raise ValueError("Alignment list must contain exactly two sequences.")
 
-def abundance_greedy_clustering(amplicon_file: Path, minseqlen: int, mincount: int, chunk_size: int, kmer_size: int) -> List:
+    sequence1, sequence2 = alignment_list
+
+    if len(sequence1) != len(sequence2):
+        raise ValueError("Sequences in the alignment list must have the same length.")
+
+    identical_count = sum(1 for a, b in zip(sequence1, sequence2) if a == b)
+    alignment_length = len(sequence1)
+
+    identity_percentage = (identical_count / alignment_length) * 100.0
+    return identity_percentage
+
+
+
+def abundance_greedy_clustering(amplicon_file: Path, minseqlen: int,
+                                mincount: int, chunk_size: int, kmer_size: int) -> List:
     """Compute an abundance greedy clustering regarding sequence count and identity.
     Identify OTU sequences.
 
@@ -131,17 +159,46 @@ def abundance_greedy_clustering(amplicon_file: Path, minseqlen: int, mincount: i
     :param kmer_size: (int) A fournir mais non utilise cette annee
     :return: (list) A list of all the [OTU (str), count (int)] .
     """
-    pass
+    # Appel à dereplication_fulllength pour obtenir les séquences et leurs comptages
+    sequences = dereplication_fulllength(amplicon_file, minseqlen, mincount)
+
+    # Initialisation de la liste des OTUs
+    otu_list = []
+
+    # Parcours des séquences
+    for sequence, count in sequences:
+        is_otu = True  # Variable pour vérifier si la séquence est une OTU
+
+        # Comparaison avec les OTUs existantes
+        for otu, _ in otu_list:
+            # Alignement global
+            alignment = nw.global_align(sequence, otu, gap_open=-1, gap_extend=-1,
+                                        matrix=str(Path(__file__).parent / "MATCH"))
+            # Calcul de l'identité
+            identity = get_identity(alignment)
+
+            # Si l'identité est > 97%, alors la séquence n'est pas une OTU
+            if identity > 97:
+                is_otu = False
+                break  # Pas besoin de vérifier les autres OTUs
+
+        # Si la séquence est une OTU, ajout à la liste des OTUs
+        if is_otu:
+            otu_list.append([sequence, count])
+    return otu_list
 
 
-def write_OTU(OTU_list: List, output_file: Path) -> None:
+def write_OTU(otu_list: List, output_file: Path) -> None:
     """Write the OTU sequence in fasta format.
 
     :param OTU_list: (list) A list of OTU sequences
     :param output_file: (Path) Path to the output file
     """
-    pass
-
+    with output_file.open("w") as file:
+        for idx, (sequence, occurrence) in enumerate(otu_list, start=1):
+            header = f">OTU_{idx} occurrence:{occurrence}"
+            formatted_sequence = textwrap.fill(sequence, width=80)
+            file.write(f"{header}\n{formatted_sequence}\n")
 
 #==============================================================
 # Main program
@@ -154,14 +211,36 @@ def main(): # pragma: no cover
     args = get_arguments()
     # Votre programme ici
 
-    
     # 1) read fastq.gz
     amplicon_file = Path(args.amplicon_file)
-    minseqlen = 400 
-    for sequence in read_fasta(amplicon_file, minseqlen):
-        print(sequence)
+
+    # 2) dereplication_fulllength
+    amplicon_file = Path(args.amplicon_file)
+
+    for sequence, count in dereplication_fulllength(amplicon_file, args.minseqlen, args.mincount):
+        print(f"Sequence: {sequence}")
+        print(f"Count: {count}")
 
 
+    # 3) get_identity
+    alignment_list = ["AGCTAGCT", "AGCTAGTT"]
+    identity = get_identity(alignment_list)
+    print(f"Identity: {identity}%")
+
+    # 4) abondance
+    chunk_size = 0  # non utilisé
+    kmer_size = 0   # non utilisé
+    otu_list = abundance_greedy_clustering(
+        args.amplicon_file, args.minseqlen, args.mincount, chunk_size, kmer_size)
+
+    # Affichage des OTUs et de leurs comptages
+    for otu in otu_list:
+        sequence, count = otu
+        print(f"OTU: {sequence}")
+        print(f"Count: {count}")
+
+    # 5) write_OTU
+    write_OTU(otu_list, args.output_file)
 
 
 if __name__ == '__main__':
