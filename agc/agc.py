@@ -211,35 +211,19 @@ def main(): # pragma: no cover
     args = get_arguments()
     # Votre programme ici
 
-    # 1) read fastq.gz
-    amplicon_file = Path(args.amplicon_file)
-
-    # 2) dereplication_fulllength
-    amplicon_file = Path(args.amplicon_file)
-
-    for sequence, count in dereplication_fulllength(amplicon_file, args.minseqlen, args.mincount):
-        print(f"Sequence: {sequence}")
-        print(f"Count: {count}")
-
-
-    # 3) get_identity
-    alignment_list = ["AGCTAGCT", "AGCTAGTT"]
-    identity = get_identity(alignment_list)
-    print(f"Identity: {identity}%")
-
-    # 4) abondance
+    # abondance
     chunk_size = 0  # non utilisé
     kmer_size = 0   # non utilisé
     otu_list = abundance_greedy_clustering(
         args.amplicon_file, args.minseqlen, args.mincount, chunk_size, kmer_size)
 
-    # Affichage des OTUs et de leurs comptages
-    for otu in otu_list:
-        sequence, count = otu
-        print(f"OTU: {sequence}")
-        print(f"Count: {count}")
+    # # Affichage des OTUs et de leurs comptages
+    # for otu in otu_list:
+    #     sequence, count = otu
+    #     print(f"OTU: {sequence}")
+    #     print(f"Count: {count}")
 
-    # 5) write_OTU
+    # write_OTU
     write_OTU(otu_list, args.output_file)
 
 
